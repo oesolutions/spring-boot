@@ -23,15 +23,19 @@ import java.util.stream.Collectors;
 
 import groovy.namespace.QName;
 import groovy.util.Node;
+import org.gradle.api.DefaultTask;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.plugins.JavaPlatformExtension;
 import org.gradle.api.plugins.JavaPlatformPlugin;
 import org.gradle.api.plugins.PluginContainer;
+import org.gradle.api.provider.Property;
 import org.gradle.api.publish.PublishingExtension;
 import org.gradle.api.publish.maven.MavenPom;
 import org.gradle.api.publish.maven.MavenPublication;
+import org.gradle.api.tasks.Internal;
+import org.gradle.api.tasks.TaskAction;
 
 import org.springframework.boot.build.DeployedPlugin;
 import org.springframework.boot.build.MavenRepositoryPlugin;
@@ -68,6 +72,8 @@ public class BomPlugin implements Plugin<Project> {
 		project.getTasks().create("moveToSnapshots", MoveToSnapshots.class, bom);
 		new PublishingCustomizer(project, bom).customize();
 
+		project.getTasks()
+			.register("generateCatalogToml", GenerateCatalogToml.class, (t) -> t.getBomExtension().convention(bom));
 	}
 
 	private void createApiEnforcedConfiguration(Project project) {
@@ -296,6 +302,28 @@ public class BomPlugin implements Plugin<Project> {
 				}
 			}
 			return false;
+		}
+
+	}
+
+	public abstract static class GenerateCatalogToml extends DefaultTask {
+
+		@Internal
+		public abstract Property<BomExtension> getBomExtension();
+
+		@TaskAction
+		protected void generateTomlFile() {
+			getLogger().lifecycle("[metadata]");
+			getLogger().lifecycle("format.version = \"1.1\"");
+			getLogger().lifecycle("[libraries]");
+			getBomExtension().get()
+				.getLibraries()
+				.forEach((library) -> library.getGroups().forEach((group) -> group.getModules().forEach((module) -> {
+					if (module.isIncludedInCatalog()) {
+						getLogger().lifecycle(String.format("%s = {group = \"%s\", name = \"%s\", version = \"\" }",
+								module.getName(), group.getId(), module.getName()));
+					}
+				})));
 		}
 
 	}

@@ -312,13 +312,16 @@ public class BomExtension {
 
 			private List<String> plugins = new ArrayList<>();
 
+			private boolean includeInCatalog = false;
+
 			public GroupHandler(String id) {
 				this.id = id;
 			}
 
 			public void setModules(List<Object> modules) {
 				this.modules = modules.stream()
-					.map((input) -> (input instanceof Module module) ? module : new Module((String) input))
+					.map((input) -> (input instanceof Module module) ? module
+							: new Module((String) input, this.includeInCatalog))
 					.toList();
 			}
 
@@ -330,15 +333,20 @@ public class BomExtension {
 				this.plugins = plugins;
 			}
 
+			public void setIncludeInCatalog(boolean includeInCatalog) {
+				this.includeInCatalog = includeInCatalog;
+			}
+
 			public Object methodMissing(String name, Object args) {
 				if (args instanceof Object[] && ((Object[]) args).length == 1) {
 					Object arg = ((Object[]) args)[0];
 					if (arg instanceof Closure<?> closure) {
-						ModuleHandler moduleHandler = new ModuleHandler();
+						ModuleHandler moduleHandler = new ModuleHandler(this.includeInCatalog);
 						closure.setResolveStrategy(Closure.DELEGATE_FIRST);
 						closure.setDelegate(moduleHandler);
 						closure.call(moduleHandler);
-						return new Module(name, moduleHandler.type, moduleHandler.classifier, moduleHandler.exclusions);
+						return new Module(name, moduleHandler.type, moduleHandler.classifier, moduleHandler.exclusions,
+								moduleHandler.includeInCatalog);
 					}
 				}
 				throw new InvalidUserDataException("Invalid configuration for module '" + name + "'");
@@ -352,6 +360,12 @@ public class BomExtension {
 
 				private String classifier;
 
+				private boolean includeInCatalog;
+
+				public ModuleHandler(boolean includeInCatalog) {
+					this.includeInCatalog = includeInCatalog;
+				}
+
 				public void exclude(Map<String, String> exclusion) {
 					this.exclusions.add(new Exclusion(exclusion.get("group"), exclusion.get("module")));
 				}
@@ -362,6 +376,10 @@ public class BomExtension {
 
 				public void setClassifier(String classifier) {
 					this.classifier = classifier;
+				}
+
+				public void setIncludeInCatalog(boolean isIncludeInCatalog) {
+					this.includeInCatalog = isIncludeInCatalog;
 				}
 
 			}

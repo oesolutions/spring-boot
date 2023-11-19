@@ -219,23 +219,27 @@ public class Library {
 
 		private final List<Exclusion> exclusions;
 
-		public Module(String name) {
-			this(name, Collections.emptyList());
+		private final boolean includedInCatalog;
+
+		public Module(String name, boolean includedInCatalog) {
+			this(name, null, null, Collections.emptyList(), includedInCatalog);
 		}
 
 		public Module(String name, String type) {
-			this(name, type, null, Collections.emptyList());
+			this(name, type, null, Collections.emptyList(), false);
 		}
 
 		public Module(String name, List<Exclusion> exclusions) {
-			this(name, null, null, exclusions);
+			this(name, null, null, exclusions, false);
 		}
 
-		public Module(String name, String type, String classifier, List<Exclusion> exclusions) {
+		public Module(String name, String type, String classifier, List<Exclusion> exclusions,
+				boolean includedInCatalog) {
 			this.name = name;
 			this.type = type;
 			this.classifier = (classifier != null) ? classifier : "";
 			this.exclusions = exclusions;
+			this.includedInCatalog = includedInCatalog;
 		}
 
 		public String getName() {
@@ -252,6 +256,10 @@ public class Library {
 
 		public List<Exclusion> getExclusions() {
 			return this.exclusions;
+		}
+
+		public boolean isIncludedInCatalog() {
+			return this.includedInCatalog;
 		}
 
 	}

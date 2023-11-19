@@ -1359,6 +1359,7 @@ bom {
 	}
 	library("Spring Boot", "${version}") {
 		group("org.springframework.boot") {
+			includeInCatalog = true
 			modules = [
 				"spring-boot",
 				"spring-boot-test",
