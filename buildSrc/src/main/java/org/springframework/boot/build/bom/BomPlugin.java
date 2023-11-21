@@ -16,10 +16,15 @@
 
 package org.springframework.boot.build.bom;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import javax.inject.Inject;
 
 import groovy.namespace.QName;
 import groovy.util.Node;
@@ -27,6 +32,11 @@ import org.gradle.api.DefaultTask;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
+import org.gradle.api.attributes.Category;
+import org.gradle.api.attributes.Usage;
+import org.gradle.api.component.AdhocComponentWithVariants;
+import org.gradle.api.component.SoftwareComponentFactory;
+import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.plugins.JavaPlatformExtension;
 import org.gradle.api.plugins.JavaPlatformPlugin;
 import org.gradle.api.plugins.PluginContainer;
@@ -35,7 +45,9 @@ import org.gradle.api.publish.PublishingExtension;
 import org.gradle.api.publish.maven.MavenPom;
 import org.gradle.api.publish.maven.MavenPublication;
 import org.gradle.api.tasks.Internal;
+import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.TaskAction;
+import org.gradle.api.tasks.TaskProvider;
 
 import org.springframework.boot.build.DeployedPlugin;
 import org.springframework.boot.build.MavenRepositoryPlugin;
@@ -51,7 +63,7 @@ import org.springframework.boot.build.bom.bomr.UpgradeBom;
  *
  * @author Andy Wilkinson
  */
-public class BomPlugin implements Plugin<Project> {
+public abstract class BomPlugin implements Plugin<Project> {
 
 	static final String API_ENFORCED_CONFIGURATION_NAME = "apiEnforced";
 
@@ -72,9 +84,34 @@ public class BomPlugin implements Plugin<Project> {
 		project.getTasks().create("moveToSnapshots", MoveToSnapshots.class, bom);
 		new PublishingCustomizer(project, bom).customize();
 
-		project.getTasks()
-			.register("generateCatalogToml", GenerateCatalogToml.class, (t) -> t.getBomExtension().convention(bom));
+		TaskProvider<GenerateCatalogToml> gen = project.getTasks()
+			.register("generateCatalogToml", GenerateCatalogToml.class, (t) -> {
+				t.getBomExtension().convention(bom);
+				t.getOutputFile()
+					.convention(project.getLayout().getBuildDirectory().file("version-catalog/libs.versions.toml"));
+			});
+
+		Configuration conf = project.getConfigurations().create("versionCatalogElements");
+		conf.setDescription("Artifacts for the version catalog");
+		conf.setCanBeResolved(false);
+		conf.setCanBeConsumed(true);
+		conf.setVisible(false);
+		conf.getOutgoing().artifact(gen);
+		conf.attributes((attrs) -> {
+			attrs.attribute(Category.CATEGORY_ATTRIBUTE,
+					project.getObjects().named(Category.class, Category.REGULAR_PLATFORM));
+			attrs.attribute(Usage.USAGE_ATTRIBUTE, project.getObjects().named(Usage.class, Usage.VERSION_CATALOG));
+		});
+		AdhocComponentWithVariants versionCatalog = getSoftwareComponentFactory().adhoc("versionCatalog");
+		project.getComponents().add(versionCatalog);
+		versionCatalog.addVariantsFromConfiguration(conf, (details) -> {
+			details.mapToMavenScope("compile");
+			details.mapToOptional();
+		});
 	}
+
+	@Inject
+	protected abstract SoftwareComponentFactory getSoftwareComponentFactory();
 
 	private void createApiEnforcedConfiguration(Project project) {
 		Configuration apiEnforced = project.getConfigurations()
@@ -311,8 +348,22 @@ public class BomPlugin implements Plugin<Project> {
 		@Internal
 		public abstract Property<BomExtension> getBomExtension();
 
+		@OutputFile
+		public abstract RegularFileProperty getOutputFile();
+
 		@TaskAction
 		protected void generateTomlFile() {
+			Path out = getOutputFile().get().getAsFile().toPath();
+			try {
+				Files.createDirectories(out.getParent());
+				try (var writer = Files.newBufferedWriter(out)) {
+					writer.write("[metadata]\n");
+					writer.write("format.version = \"1.1\"\n\n");
+				}
+			}
+			catch (IOException ioe) {
+				throw new RuntimeException(ioe);
+			}
 			getLogger().lifecycle("[metadata]");
 			getLogger().lifecycle("format.version = \"1.1\"");
 			getLogger().lifecycle("[libraries]");
