@@ -6,6 +6,10 @@ plugins {
 
 description = "Spring Boot Dependencies"
 
+versionCatalog {
+	springBootVersion.set(project.version)
+}
+
 bom {
 	effectiveBomArtifact()
 	upgrade {

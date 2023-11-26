@@ -20,7 +20,6 @@ import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.gradle.api.Action;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
@@ -32,6 +31,8 @@ import org.gradle.api.plugins.JavaPlatformPlugin;
 import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.publish.PublishingExtension;
 import org.gradle.api.publish.maven.plugins.MavenPublishPlugin;
+import org.gradle.api.publish.plugins.PublishingPlugin;
+import org.gradle.api.tasks.Delete;
 
 /**
  * A plugin to make a project's {@code deployment} publication available as a Maven
@@ -50,28 +51,36 @@ public class MavenRepositoryPlugin implements Plugin<Project> {
 	/**
 	 * Name of the task that publishes to the project repository.
 	 */
-	public static final String PUBLISH_TO_PROJECT_REPOSITORY_TASK_NAME = "publishMavenPublicationToProjectRepository";
+	public static final String PUBLISH_TO_PROJECT_REPOSITORY_TASK_NAME = "publishToProjectRepository";
 
 	@Override
 	public void apply(Project project) {
+		Task publishToProjectRepo = project.getTasks()
+			.create(PUBLISH_TO_PROJECT_REPOSITORY_TASK_NAME, (t) -> t.setGroup(PublishingPlugin.PUBLISH_TASK_GROUP));
+		Configuration projectRepository = project.getConfigurations().create(MAVEN_REPOSITORY_CONFIGURATION_NAME);
 		project.getPlugins().apply(MavenPublishPlugin.class);
 		PublishingExtension publishing = project.getExtensions().getByType(PublishingExtension.class);
 		File repositoryLocation = new File(project.getBuildDir(), "maven-repository");
+		Delete cleanTask = project.getTasks()
+			.create("cleanMavenRepository", Delete.class, (t) -> t.setDelete(repositoryLocation));
 		publishing.getRepositories().maven((mavenRepository) -> {
 			mavenRepository.setName("project");
 			mavenRepository.setUrl(repositoryLocation.toURI());
 		});
 		project.getTasks()
-			.matching((task) -> task.getName().equals(PUBLISH_TO_PROJECT_REPOSITORY_TASK_NAME))
-			.all((task) -> setUpProjectRepository(project, task, repositoryLocation));
+			.matching((task) -> task.getName().matches("publish.*PublicationToProjectRepository"))
+			.all((task) -> {
+				publishToProjectRepo.dependsOn(task);
+				setUpProjectRepository(project, projectRepository, task, cleanTask, repositoryLocation);
+			});
 		project.getTasks()
 			.matching((task) -> task.getName().equals("publishPluginMavenPublicationToProjectRepository"))
-			.all((task) -> setUpProjectRepository(project, task, repositoryLocation));
+			.all((task) -> setUpProjectRepository(project, projectRepository, task, cleanTask, repositoryLocation));
 	}
 
-	private void setUpProjectRepository(Project project, Task publishTask, File repositoryLocation) {
-		publishTask.doFirst(new CleanAction(repositoryLocation));
-		Configuration projectRepository = project.getConfigurations().create(MAVEN_REPOSITORY_CONFIGURATION_NAME);
+	private void setUpProjectRepository(Project project, Configuration projectRepository, Task publishTask,
+			Delete cleanTask, File repositoryLocation) {
+		publishTask.dependsOn(cleanTask);
 		project.getArtifacts()
 			.add(projectRepository.getName(), repositoryLocation, (artifact) -> artifact.builtBy(publishTask));
 		DependencySet target = projectRepository.getDependencies();
@@ -100,21 +109,6 @@ public class MavenRepositoryPlugin implements Plugin<Project> {
 				dependencyDescriptor.put("configuration", MAVEN_REPOSITORY_CONFIGURATION_NAME);
 				target.add(project.getDependencies().project(dependencyDescriptor));
 			});
-	}
-
-	private static final class CleanAction implements Action<Task> {
-
-		private final File location;
-
-		private CleanAction(File location) {
-			this.location = location;
-		}
-
-		@Override
-		public void execute(Task task) {
-			task.getProject().delete(this.location);
-		}
-
 	}
 
 }

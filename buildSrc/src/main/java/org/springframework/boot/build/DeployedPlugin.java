@@ -25,6 +25,8 @@ import org.gradle.api.publish.maven.MavenPublication;
 import org.gradle.api.publish.maven.plugins.MavenPublishPlugin;
 import org.gradle.api.tasks.bundling.Jar;
 
+import org.springframework.boot.build.bom.VersionCatalogPlugin;
+
 /**
  * A plugin applied to a project that should be deployed.
  *
@@ -37,13 +39,19 @@ public class DeployedPlugin implements Plugin<Project> {
 	 */
 	public static final String GENERATE_POM_TASK_NAME = "generatePomFileForMavenPublication";
 
+	/**
+	 * Name of the default maven publication.
+	 */
+	public static final String PUBLICATION_NAME = "maven";
+
 	@Override
 	@SuppressWarnings("deprecation")
 	public void apply(Project project) {
 		project.getPlugins().apply(MavenPublishPlugin.class);
 		project.getPlugins().apply(MavenRepositoryPlugin.class);
 		PublishingExtension publishing = project.getExtensions().getByType(PublishingExtension.class);
-		MavenPublication mavenPublication = publishing.getPublications().create("maven", MavenPublication.class);
+		MavenPublication mavenPublication = publishing.getPublications()
+			.create(PUBLICATION_NAME, MavenPublication.class);
 		project.afterEvaluate((evaluated) -> project.getPlugins().withType(JavaPlugin.class).all((javaPlugin) -> {
 			if (((Jar) project.getTasks().getByName(JavaPlugin.JAR_TASK_NAME)).isEnabled()) {
 				project.getComponents()
@@ -56,6 +64,15 @@ public class DeployedPlugin implements Plugin<Project> {
 			.all((javaPlugin) -> project.getComponents()
 				.matching((component) -> component.getName().equals("javaPlatform"))
 				.all(mavenPublication::from));
+		project.getPlugins().withType(VersionCatalogPlugin.class).all((versionCatalogPlugin) -> {
+			MavenPublication catalogPublication = publishing.getPublications()
+				.create("catalog", MavenPublication.class);
+			project.getComponents()
+				.matching((component) -> component.getName().equals("versionCatalog"))
+				.all(catalogPublication::from);
+			project.afterEvaluate(
+					(evaluated) -> catalogPublication.setArtifactId(mavenPublication.getArtifactId() + "-catalog"));
+		});
 	}
 
 }

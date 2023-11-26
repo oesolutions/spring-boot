@@ -16,38 +16,22 @@
 
 package org.springframework.boot.build.bom;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import javax.inject.Inject;
-
 import groovy.namespace.QName;
 import groovy.util.Node;
-import org.gradle.api.DefaultTask;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
-import org.gradle.api.attributes.Category;
-import org.gradle.api.attributes.Usage;
-import org.gradle.api.component.AdhocComponentWithVariants;
-import org.gradle.api.component.SoftwareComponentFactory;
-import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.plugins.JavaPlatformExtension;
 import org.gradle.api.plugins.JavaPlatformPlugin;
 import org.gradle.api.plugins.PluginContainer;
-import org.gradle.api.provider.Property;
 import org.gradle.api.publish.PublishingExtension;
 import org.gradle.api.publish.maven.MavenPom;
 import org.gradle.api.publish.maven.MavenPublication;
-import org.gradle.api.tasks.Internal;
-import org.gradle.api.tasks.OutputFile;
-import org.gradle.api.tasks.TaskAction;
-import org.gradle.api.tasks.TaskProvider;
 
 import org.springframework.boot.build.DeployedPlugin;
 import org.springframework.boot.build.MavenRepositoryPlugin;
@@ -73,6 +57,7 @@ public abstract class BomPlugin implements Plugin<Project> {
 		plugins.apply(DeployedPlugin.class);
 		plugins.apply(MavenRepositoryPlugin.class);
 		plugins.apply(JavaPlatformPlugin.class);
+		plugins.apply(VersionCatalogPlugin.class);
 		JavaPlatformExtension javaPlatform = project.getExtensions().getByType(JavaPlatformExtension.class);
 		javaPlatform.allowDependencies();
 		createApiEnforcedConfiguration(project);
@@ -83,35 +68,7 @@ public abstract class BomPlugin implements Plugin<Project> {
 		project.getTasks().create("bomrUpgrade", UpgradeBom.class, bom);
 		project.getTasks().create("moveToSnapshots", MoveToSnapshots.class, bom);
 		new PublishingCustomizer(project, bom).customize();
-
-		TaskProvider<GenerateCatalogToml> gen = project.getTasks()
-			.register("generateCatalogToml", GenerateCatalogToml.class, (t) -> {
-				t.getBomExtension().convention(bom);
-				t.getOutputFile()
-					.convention(project.getLayout().getBuildDirectory().file("version-catalog/libs.versions.toml"));
-			});
-
-		Configuration conf = project.getConfigurations().create("versionCatalogElements");
-		conf.setDescription("Artifacts for the version catalog");
-		conf.setCanBeResolved(false);
-		conf.setCanBeConsumed(true);
-		conf.setVisible(false);
-		conf.getOutgoing().artifact(gen);
-		conf.attributes((attrs) -> {
-			attrs.attribute(Category.CATEGORY_ATTRIBUTE,
-					project.getObjects().named(Category.class, Category.REGULAR_PLATFORM));
-			attrs.attribute(Usage.USAGE_ATTRIBUTE, project.getObjects().named(Usage.class, Usage.VERSION_CATALOG));
-		});
-		AdhocComponentWithVariants versionCatalog = getSoftwareComponentFactory().adhoc("versionCatalog");
-		project.getComponents().add(versionCatalog);
-		versionCatalog.addVariantsFromConfiguration(conf, (details) -> {
-			details.mapToMavenScope("compile");
-			details.mapToOptional();
-		});
 	}
-
-	@Inject
-	protected abstract SoftwareComponentFactory getSoftwareComponentFactory();
 
 	private void createApiEnforcedConfiguration(Project project) {
 		Configuration apiEnforced = project.getConfigurations()
@@ -141,7 +98,10 @@ public abstract class BomPlugin implements Plugin<Project> {
 
 		private void customize() {
 			PublishingExtension publishing = this.project.getExtensions().getByType(PublishingExtension.class);
-			publishing.getPublications().withType(MavenPublication.class).all(this::configurePublication);
+			publishing.getPublications()
+				.withType(MavenPublication.class)
+				.matching((mavenPublication) -> mavenPublication.getName().equals(DeployedPlugin.PUBLICATION_NAME))
+				.all(this::configurePublication);
 		}
 
 		private void configurePublication(MavenPublication publication) {
@@ -339,42 +299,6 @@ public abstract class BomPlugin implements Plugin<Project> {
 				}
 			}
 			return false;
-		}
-
-	}
-
-	public abstract static class GenerateCatalogToml extends DefaultTask {
-
-		@Internal
-		public abstract Property<BomExtension> getBomExtension();
-
-		@OutputFile
-		public abstract RegularFileProperty getOutputFile();
-
-		@TaskAction
-		protected void generateTomlFile() {
-			Path out = getOutputFile().get().getAsFile().toPath();
-			try {
-				Files.createDirectories(out.getParent());
-				try (var writer = Files.newBufferedWriter(out)) {
-					writer.write("[metadata]\n");
-					writer.write("format.version = \"1.1\"\n\n");
-				}
-			}
-			catch (IOException ioe) {
-				throw new RuntimeException(ioe);
-			}
-			getLogger().lifecycle("[metadata]");
-			getLogger().lifecycle("format.version = \"1.1\"");
-			getLogger().lifecycle("[libraries]");
-			getBomExtension().get()
-				.getLibraries()
-				.forEach((library) -> library.getGroups().forEach((group) -> group.getModules().forEach((module) -> {
-					if (module.isIncludedInCatalog()) {
-						getLogger().lifecycle(String.format("%s = {group = \"%s\", name = \"%s\", version = \"\" }",
-								module.getName(), group.getId(), module.getName()));
-					}
-				})));
 		}
 
 	}
