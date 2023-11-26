@@ -71,6 +71,12 @@ gradlePlugin {
 			description = "Spring Boot AOT Gradle Plugin"
 			implementationClass = "org.springframework.boot.gradle.plugin.SpringBootAotPlugin"
 		}
+		springBootSettingsPlugin {
+			id = "org.springframework.boot.settings"
+			displayName = "Spring Boot Settings Gradle Plugin"
+			description = "Spring Boot Settings Gradle Plugin"
+			implementationClass = "org.springframework.boot.gradle.plugin.SpringBootSettingsPlugin"
+		}
 	}
 }
 

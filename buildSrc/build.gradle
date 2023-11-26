@@ -80,6 +80,10 @@ gradlePlugin {
 			id = "org.springframework.boot.bom"
 			implementationClass = "org.springframework.boot.build.bom.BomPlugin"
 		}
+		catalogPlugin {
+			id = "org.springframework.boot.catalog"
+			implementationClass = "org.springframework.boot.build.catalog.CatalogPlugin"
+		}
 		configurationPropertiesPlugin {
 			id = "org.springframework.boot.configuration-properties"
 			implementationClass = "org.springframework.boot.build.context.properties.ConfigurationPropertiesPlugin"

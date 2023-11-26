@@ -20,6 +20,7 @@ import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.plugins.JavaPlatformPlugin;
 import org.gradle.api.plugins.JavaPlugin;
+import org.gradle.api.plugins.catalog.VersionCatalogPlugin;
 import org.gradle.api.publish.PublishingExtension;
 import org.gradle.api.publish.maven.MavenPublication;
 import org.gradle.api.publish.maven.plugins.MavenPublishPlugin;
@@ -55,6 +56,11 @@ public class DeployedPlugin implements Plugin<Project> {
 			.withType(JavaPlatformPlugin.class)
 			.all((javaPlugin) -> project.getComponents()
 				.matching((component) -> component.getName().equals("javaPlatform"))
+				.all(mavenPublication::from));
+		project.getPlugins()
+			.withType(VersionCatalogPlugin.class)
+			.all((catalogPlugin) -> project.getComponents()
+				.matching((component) -> component.getName().equals("versionCatalog"))
 				.all(mavenPublication::from));
 	}
 
